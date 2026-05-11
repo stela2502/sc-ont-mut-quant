@@ -1,0 +1,94 @@
+name: Build MUSL binaries
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-musl:
+    runs-on: ubuntu-24.04
+
+    steps:
+      # Checkout pipeline repository
+      - name: Checkout pipeline
+        uses: actions/checkout@v5
+
+      # Checkout bam_tide repository
+      - name: Checkout bam_tide
+        uses: actions/checkout@v5
+        with:
+          repository: stela2502/bam_tide
+          ref: main
+          path: bam_tide
+
+      # Install native MUSL + HTS dependencies
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            musl-tools \
+            pkg-config \
+            clang \
+            cmake \
+            make \
+            gcc \
+            libbz2-dev \
+            liblzma-dev \
+            zlib1g-dev
+
+      # Install Rust toolchain
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      # Cache cargo registry + build artifacts
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            bam_tide
+
+      # Build MUSL binaries
+      - name: Build bam_tide MUSL binaries
+        working-directory: bam_tide
+        env:
+          PKG_CONFIG_ALLOW_CROSS: "1"
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          cargo build \
+            --release \
+            --target x86_64-unknown-linux-musl
+
+      # Create pipeline bin directory
+      - name: Create bin directory
+        run: mkdir -p bin
+
+      # Copy binaries into pipeline
+      - name: Copy binaries
+        run: |
+          cp bam_tide/target/x86_64-unknown-linux-musl/release/bam-ont-normalizer bin/
+          cp bam_tide/target/x86_64-unknown-linux-musl/release/bam-transcriptome-to-genome bin/
+          cp bam_tide/target/x86_64-unknown-linux-musl/release/bam-quant bin/
+
+      # Verify linkage
+      - name: Verify binaries
+        run: |
+          echo "==== file ===="
+          file bin/*
+
+          echo
+          echo "==== ldd ===="
+          for exe in bin/*; do
+            ldd "$exe" || true
+          done
+
+      # Upload binaries as workflow artifact
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: sc-ont-mut-quant-musl-binaries
+          path: bin/
