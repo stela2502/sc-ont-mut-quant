@@ -85,10 +85,26 @@ jobs:
           for exe in bin/*; do
             ldd "$exe" || true
           done
+          
+      - name: Commit binaries into pipeline repo
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add bin/bam-ont-normalizer
+          git add bin/bam-transcriptome-to-genome
+          git add bin/bam-quant
+
+          if git diff --cached --quiet; then
+            echo "No binary changes to commit"
+          else
+            git commit -m "Update MUSL binaries"
+            git push
+          fi
 
       # Upload binaries as workflow artifact
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: sc-ont-mut-quant-musl-binaries
-          path: bin/
+          path: bin
