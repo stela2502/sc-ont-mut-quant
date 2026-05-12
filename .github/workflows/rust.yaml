@@ -1,4 +1,4 @@
-name: Build MUSL binaries
+name: Pipeline CI
 
 on:
   push:
@@ -8,103 +8,73 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-musl:
+  check-bundled-tools:
     runs-on: ubuntu-24.04
 
     steps:
-      # Checkout pipeline repository
-      - name: Checkout pipeline
+      - name: Checkout repository
         uses: actions/checkout@v5
 
-      # Checkout bam_tide repository
-      - name: Checkout bam_tide
+      - name: Show repository state
+        run: |
+          pwd
+          find bin -maxdepth 1 -type f -print || true
+
+      - name: Verify bundled tools exist
+        run: |
+          test -f bin/bam-ont-normalizer
+          test -f bin/bam-transcriptome-to-genome
+          test -f bin/bam-quant
+          test -f bin/minimap_script_chatty.sh
+
+      - name: Verify executable permissions
+        run: |
+          test -x bin/bam-ont-normalizer
+          test -x bin/bam-transcriptome-to-genome
+          test -x bin/bam-quant
+          test -x bin/minimap_script_chatty.sh
+
+      - name: Inspect binaries
+        run: |
+          file bin/bam-ont-normalizer
+          file bin/bam-transcriptome-to-genome
+          file bin/bam-quant
+          ldd bin/bam-ont-normalizer || true
+          ldd bin/bam-transcriptome-to-genome || true
+          ldd bin/bam-quant || true
+
+      - name: Check Rust tool CLIs
+        run: |
+          ./bin/bam-ont-normalizer --help
+          ./bin/bam-transcriptome-to-genome --help
+          ./bin/bam-quant --help
+
+      - name: Check shell script syntax
+        run: |
+          bash -n bin/minimap_script_chatty.sh
+
+  check-nextflow:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
         uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
         with:
-          repository: stela2502/bam_tide
-          ref: main
-          path: bam_tide
+          distribution: temurin
+          java-version: "17"
 
-      # Install native MUSL + HTS dependencies
-      - name: Install system dependencies
+      - name: Install Nextflow
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            musl-tools \
-            pkg-config \
-            clang \
-            cmake \
-            make \
-            gcc \
-            libbz2-dev \
-            liblzma-dev \
-            zlib1g-dev
+          curl -s https://get.nextflow.io | bash
+          ./nextflow -version
 
-      # Install Rust toolchain
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-musl
-
-      # Cache cargo registry + build artifacts
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            bam_tide
-
-      # Build MUSL binaries
-      - name: Build bam_tide MUSL binaries
-        working-directory: bam_tide
-        env:
-          PKG_CONFIG_ALLOW_CROSS: "1"
-          RUSTFLAGS: "-C target-feature=+crt-static"
+      - name: Check Nextflow config
         run: |
-          cargo build \
-            --release \
-            --target x86_64-unknown-linux-musl
+          ./nextflow config -flat
 
-      # Create pipeline bin directory
-      - name: Create bin directory
-        run: mkdir -p bin
-
-      # Copy binaries into pipeline
-      - name: Copy binaries
+      - name: Check pipeline help/config parse
         run: |
-          cp bam_tide/target/x86_64-unknown-linux-musl/release/bam-ont-normalizer bin/
-          cp bam_tide/target/x86_64-unknown-linux-musl/release/bam-transcriptome-to-genome bin/
-          cp bam_tide/target/x86_64-unknown-linux-musl/release/bam-quant bin/
-
-      # Verify linkage
-      - name: Verify binaries
-        run: |
-          echo "==== file ===="
-          file bin/*
-
-          echo
-          echo "==== ldd ===="
-          for exe in bin/*; do
-            ldd "$exe" || true
-          done
-          
-      - name: Commit binaries into pipeline repo
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-
-          git add bin/bam-ont-normalizer
-          git add bin/bam-transcriptome-to-genome
-          git add bin/bam-quant
-
-          if git diff --cached --quiet; then
-            echo "No binary changes to commit"
-          else
-            git commit -m "Update MUSL binaries"
-            git push
-          fi
-
-      # Upload binaries as workflow artifact
-      - name: Upload binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: sc-ont-mut-quant-musl-binaries
-          path: bin
+          ./nextflow run . --help || true
