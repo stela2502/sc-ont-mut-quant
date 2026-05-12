@@ -107,7 +107,9 @@ process BAM_QUANT {
 }
 
 workflow {
-    input_bam_ch = Channel.fromPath(params.input_bam, checkIfExists: true)
+    input_bam_ch = Channel
+        .fromList(params.input_bam.tokenize(' '))
+        .map { file(it, checkIfExists: true) }
 
     transcriptome_ch = file(params.transcriptome)
     stringtie_gff_ch = file(params.stringtie_gff)
