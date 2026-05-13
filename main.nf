@@ -8,6 +8,8 @@ params.splice_index  = "${System.getenv('HOME')}/Downloads/gencode.v49.annotatio
 params.vcf           = "/data1/testCase/SNPs.vcf"
 params.minimap_script = "/data1/testCase/minimap_script_chatty.sh"
 
+params.merge_bams = true
+
 params.outdir = "/data1/testCase/nf_tp53_out_multi"
 params.threads = 5
 
@@ -130,13 +132,23 @@ workflow {
         genome_fa_ch
     )
 
-    quant_input_ch = genomic_ch
-        .collect()
-        .map { pairs ->
-            def bams = pairs.collect { it[0] }
-            def tabs = pairs.collect { it[1] }
-            tuple(bams, tabs)
-        }
+    if (params.merge_bams) {
+
+        quant_input_ch = genomic_ch
+            .collect()
+            .map { pairs ->
+                def bams = pairs.collect { it[0] }
+                def tabs = pairs.collect { it[1] }
+                tuple("merged", bams, tabs)
+            }
+
+    } else {
+
+        quant_input_ch = genomic_ch
+            .map { genomic_bam, read_tag_table ->
+                tuple(genomic_bam.simpleName, [genomic_bam], [read_tag_table])
+            }
+    }
 
     BAM_QUANT(
         quant_input_ch,
