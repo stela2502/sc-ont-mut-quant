@@ -6,7 +6,6 @@ params.stringtie_gff = "/data1/testCase/stringtie.gff"
 params.genome_fa     = "${System.getenv('HOME')}/Downloads/GRCh38.p14.genome.fa.gz"
 params.splice_index  = "${System.getenv('HOME')}/Downloads/gencode.v49.annotation.gtf.dat"
 params.vcf           = "/data1/testCase/SNPs.vcf"
-params.minimap_script = "/data1/testCase/minimap_script_chatty.sh"
 
 params.merge_bams = true
 
@@ -36,19 +35,19 @@ process MAP_TO_TRANSCRIPTOME {
     publishDir params.outdir, mode: 'copy'
 
     input:
-    tuple path(sliced_bam), path(read_tag_table)
+    tuple path(sliced_fastq), path(read_tag_table)
     path transcriptome
 
     output:
-    tuple path("${sliced_bam.simpleName}_mapped.bam"),
+    tuple path("${sliced_fastq.simpleName}_mapped.bam"),
           path(read_tag_table)
 
     script:
     """
-    ${params.minimap_script} \\
-      ${sliced_bam} \\
+    minimap_script_chatty.sh \\
+      ${sliced_fastq} \\
       ${transcriptome} \\
-      ${sliced_bam.simpleName}_mapped \\
+      ${sliced_fastq.simpleName}_mapped \\
       ${params.threads}
     """
 }
@@ -139,14 +138,14 @@ workflow {
             .map { pairs ->
                 def bams = pairs.collect { it[0] }
                 def tabs = pairs.collect { it[1] }
-                tuple("merged", bams, tabs)
+                tuple( bams, tabs)
             }
 
     } else {
 
         quant_input_ch = genomic_ch
             .map { genomic_bam, read_tag_table ->
-                tuple(genomic_bam.simpleName, [genomic_bam], [read_tag_table])
+                tuple([genomic_bam], [read_tag_table])
             }
     }
 
